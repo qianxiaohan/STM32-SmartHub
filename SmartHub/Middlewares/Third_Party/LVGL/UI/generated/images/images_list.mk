@@ -1,0 +1,1 @@
+GEN_CSRCS += _weather_alpha_32x32.c _wifi_alpha_20x20.c _settings_alpha_20x20.c _temp_alpha_50x50.c _huminity_alpha_50x50.c _return_alpha_32x32.c
