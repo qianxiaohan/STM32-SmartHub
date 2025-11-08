@@ -29,7 +29,7 @@
 const char *test_at = "AT\r\n";															 // 测试AT指令
 const char *set_sta_mode = "AT+CWMODE=1\r\n";											 // 设置STA模式
 const char *set_dhcp = "AT+CWDHCP=1,1\r\n";												 // 设置DHCP
-const char *connect_wifi = "AT+CWJAP=\"Redmi K70\",\"qq1804068646\"\r\n";				 // 连接wifi指令
+const char *connect_wifi = "AT+CWJAP=\"wifi名称\",\"wifi密码\"\r\n";				 // 连接wifi指令
 const char *connect_server = "AT+CIPSTART=\"TCP\",\"api.seniverse.com\",80\r\n";		 // 连接TCP服务器指令
 const char *set_cipmode = "AT+CIPMODE=1\r\n";											 // 透传模式，发送数据时不用指定数据的大小
 const char *send_data_cmd = "AT+CIPSEND\r\n";											 // 透传模式下发送数据
@@ -39,7 +39,7 @@ const char *config_sntp = "AT+CIPSNTPCFG=1,8,\"ntp.aliyun.com\",\"ntp.sjtu.edu.c
 const char *get_sntp_time = "AT+CIPSNTPTIME?\r\n";										 // 获取STNP时间
 
 /* API可配置的参数 */
-const char *key = "SigzO8oaCNRAS96L8"; // API私钥
+const char *key = "*******"; // API私钥，需要自行申请
 const char *location = "chengdu";	   // 地区
 const char *days = "1";				   // 查询1~3天的天气
 
