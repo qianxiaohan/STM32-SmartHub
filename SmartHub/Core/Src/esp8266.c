@@ -21,31 +21,47 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "weather.h" //解析天气和日期
+//解析天气和日期
+#include "weather.h" 
+
+//freertos需要的头文件
+#include "cmsis_os2.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 #define SNTPTIME_LEN	43	//返回的SNTP时间的数据长度是固定的
 
 /* ESP8266指令 */
-const char *test_at = "AT\r\n";															 // 测试AT指令
-const char *set_sta_mode = "AT+CWMODE=1\r\n";											 // 设置STA模式
-const char *set_dhcp = "AT+CWDHCP=1,1\r\n";												 // 设置DHCP
-const char *connect_wifi = "AT+CWJAP=\"wifi名称\",\"wifi密码\"\r\n";				 // 连接wifi指令
-const char *connect_server = "AT+CIPSTART=\"TCP\",\"api.seniverse.com\",80\r\n";		 // 连接TCP服务器指令
-const char *set_cipmode = "AT+CIPMODE=1\r\n";											 // 透传模式，发送数据时不用指定数据的大小
-const char *send_data_cmd = "AT+CIPSEND\r\n";											 // 透传模式下发送数据
-const char *exit_send_cmd = "+++";														 // 退出透传模式
-const char *close_tcp_cmd = "AT+CIPCLOSE\r\n";											 // 关闭TCP连接
-const char *config_sntp = "AT+CIPSNTPCFG=1,8,\"ntp.aliyun.com\",\"ntp.sjtu.edu.cn\"\r\n"; // 配置SNTP服务器
-const char *get_sntp_time = "AT+CIPSNTPTIME?\r\n";										 // 获取STNP时间
+const char* const test_at = "AT\r\n";															 // 测试AT指令
+const char* const set_sta_mode = "AT+CWMODE=1\r\n";											 // 设置STA模式
+const char* const set_dhcp = "AT+CWDHCP=1,1\r\n";												 // 设置DHCP
+const char* const connect_wifi = "AT+CWJAP=\"Redmi K70\",\"qq1804068646\"\r\n";				 // 连接wifi指令
+const char* const connect_server = "AT+CIPSTART=\"TCP\",\"api.seniverse.com\",80\r\n"; // 连接TCP服务器指令
+const char* const set_cipmode = "AT+CIPMODE=0\r\n";									// 非透传模式，发送数据时需要指定数据的大小
+const char* const send_data_cmd = "AT+CIPSEND=%d\r\n";											 // 透传模式下发送数据
+const char* const exit_send_cmd = "+++";														 // 退出透传模式
+const char* const close_tcp_cmd = "AT+CIPCLOSE\r\n";											 // 关闭TCP连接
+const char* const config_sntp = "AT+CIPSNTPCFG=1,8,\"ntp.aliyun.com\",\"ntp.sjtu.edu.cn\"\r\n"; // 配置SNTP服务器
+const char* const get_sntp_time = "AT+CIPSNTPTIME?\r\n";										 // 获取STNP时间
+const char* const wifi_state = "AT+CWSTATE?\r\n";	//获取WIFI状态
 
 /* API可配置的参数 */
-const char *key = "*******"; // API私钥，需要自行申请
-const char *location = "chengdu";	   // 地区
-const char *days = "1";				   // 查询1~3天的天气
+const char* const key = "SigzO8oaCNRAS96L8"; // API私钥
+const char* const location = "chengdu";	   // 地区
+const char* const days = "1";				   // 查询1~3天的天气，注：只实现了解析1天的未来天气
+
+/* 获取未来天气的请求头 */
+const char* const get_daily_weather = "GET /v3/weather/daily.json?key=%s&location=%s&language=en&unit=c&start=0&days=%s HTTP/1.1\r\nHost: api.seniverse.com\r\n\r\n";
+
+/* 获取实况天气的请求头 */
+const char* const get_now_weather = "GET /v3/weather/now.json?key=%s&location=%s&language=en&unit=c HTTP/1.1\r\nHost: api.seniverse.com\r\n\r\n";
 
 /* 用于解析日期的缓冲区 */
 uint8_t date_buffer[64];
 uint8_t date_buffer_cnt;
+
+/* 标志位，判断是否获取了正确的sntp, 1表示获取到了正确的sntp时间 */
+uint8_t sntp_ok = 0;
 
 static void ESP8266_RTC_CalendarConfig(void);	//配置RTC
 
@@ -68,7 +84,7 @@ void ESP8266_Clear(void)
  */
 unsigned char ESP8266_SendCmd(const char *cmd, char *res)
 {
-	uint16_t timeOut = 500; // 超时时间2S
+	uint16_t timeOut = 200; // 超时时间2S
 
 	/* 向ESP8266发送指令 */
 	if (uart_transmit_str(huart1, (uint8_t *)cmd) != HAL_OK)
@@ -89,12 +105,21 @@ unsigned char ESP8266_SendCmd(const char *cmd, char *res)
 				{
 					memcpy(date_buffer, debugBuffer, debug_data_len);
 					date_buffer_cnt = debug_data_len;
+					/* 获取到正确的SNTP时间，而非1970 */
+					if(strstr((char*)date_buffer, "1970") == NULL)
+					{
+						sntp_ok = 1;
+					}
+				}
+				else if(strstr(cmd, "CWSTATE") != NULL)
+				{
+					memcpy(date_buffer, debugBuffer, debug_data_len);
+					date_buffer_cnt = debug_data_len;
 				}
 				ESP8266_Clear(); // 清空缓存
 				return 0;
 			}
 		}
-
 		HAL_Delay(10);
 	}
 
@@ -115,101 +140,129 @@ void ESP8266_SendLenData(unsigned char *data, unsigned short len)
 }
 
 /**
- * @brief 透传模式下发送数据
+ * @brief 向服务器发送指定长度的数据
  *
  *
  * @param data 要发送的数据
  */
-void ESP8266_SendData(unsigned char **data, unsigned char data_num)
+void ESP8266_SendData(unsigned char *data)
 {
 
 	char buffer2[128];
 	char *ret;
-	uint16_t timeOut = 500; // 等待5S
+	uint16_t timeOut = 200; // 等待5S
 	future_weather_t wt;
 	now_weather_t nwt;
-	ESP8266_Clear();						  // 清空接收缓存
+	// ESP8266_Clear();						  // 清空接收缓存
 
 	unsigned char now_flag = 0;		//0:是实况天气，1：是未来天气
 
-	if (!ESP8266_SendCmd(send_data_cmd, ">")) // 收到‘>’时可以发送数据
+	char cmd[256];
+
+	sprintf(cmd, send_data_cmd, strlen((char*)data));
+
+	/* 判断发送实况/未来天气请求 */
+	if(strstr((char*)data, "now"))
 	{
-		for (uint8_t i = 0; i < data_num; i++)
+		now_flag = 0;
+	}
+	else if(strstr((char*)data, "daily"))
+	{
+		now_flag = 1;
+	}
+	else
+	{
+		now_flag = 2;
+	}
+
+	// 串口助手发送指令
+	uart_transmit_str(huart3, (uint8_t*)cmd);
+	
+
+	unsigned char times = 5;
+
+	while(ESP8266_SendCmd(connect_server, "OK") && (times > 0))
+	{
+		times--;
+		HAL_Delay(500);
+	}
+	
+	if(times != 0)
+	{
+		uart_transmit_str(huart3, (uint8_t *)"Connect Server Successed!\r\n");
+	}
+	else
+	{
+		uart_transmit_str(huart3, (uint8_t *)"Connect Server Failed!\r\n");
+		return;
+	}
+
+	HAL_Delay(500);
+
+	if (!ESP8266_SendCmd(cmd, ">")) // 收到‘>’时可以发送数据
+	{
+		/* 向ESP8266发送数据 */
+		uart_transmit_str(huart1, data);
+		// uart_transmit_str(huart3, data);
+
+		HAL_Delay(2000);	//延迟2s检查缓冲区
+
+
+		/* 等待ESP8266发来的数据 */
+		while (timeOut--)
 		{
-			/* 向ESP8266发送数据 */
-			uart_transmit_str(huart1, data[i]);
+			if (rx_data_ready == 1) // 接收完成
+			{
+				rx_data_ready = 0; // 标志位置0，准备下次DMA接收
 
-			/* 判断发送实况/未来天气请求 */
-			if(strstr((char*)data[i], "now"))
-			{
-				now_flag = 0;
-			}
-			else if(strstr((char*)data[i], "daily"))
-			{
-				now_flag = 1;
-			}
-			else
-			{
-				now_flag = 2;
-			}
+				// uart_transmit_str(huart3, debugBuffer);
+				HAL_UART_Transmit_DMA(&huart3, debugBuffer, debug_data_len);
 
-			/* 等待ESP8266发来的数据 */
-			while (timeOut--)
-			{
-				if (rx_data_ready == 1) // 接收完成
+				if(now_flag == 0)
 				{
-					rx_data_ready = 0; // 标志位置0，准备下次DMA接收
+					/* GET请求返回来的响应包括请求头，这里是为了找到json格式的数据以便解析 */
+					ret = strchr((char *)debugBuffer, '{');
 
-					if(now_flag == 0)
-					{
-						/* GET请求返回来的响应包括请求头，这里是为了找到json格式的数据以便解析 */
-						ret = strchr((char *)debugBuffer, '{');
+					/* 解析实况天气 */
+					nwt = parse_now_weather_data(ret);
 
-						/* 解析实况天气 */
-						nwt = parse_now_weather_data(ret);
+					/* 解析完后复制到全局变量，用于LVGL显示 */
+					strcpy(mdt.weather, nwt.weather);
+					strcpy(mdt.temp, nwt.temp);
 
-						/* 解析完后复制到全局变量 */
-						strcpy(mdt.weather, nwt.weather);
-						strcpy(mdt.temp, nwt.temp);
-						// strcpy(mdt.);
-
-						/* DMA的速度过快，直接将缓冲区的数据发送可能会出问题？将解析后的数据写入缓冲区 */
-						sprintf(buffer2, "%s, %s, %s, %s, %s\r\n", nwt.city_name, nwt.date, nwt.temp, nwt.weather, nwt.weather_code);
-					}
-					else if(now_flag == 1)
-					{
-						/* GET请求返回来的响应包括请求头，这里是为了找到json格式的数据以便解析 */
-						ret = strchr((char *)debugBuffer, '{');
-
-						/* 解析未来天气 */
-						wt = parse_future_weather_data(ret);
-						strcpy(mdt.high_temp, wt.high_temp);
-						strcpy(mdt.low_temp, wt.low_temp);
-
-						/* DMA的速度过快，直接将缓冲区的数据发送可能会出问题？将解析后的数据写入缓冲区 */
-						sprintf(buffer2, "%s, %s, %s, %s, %s, %s\r\n", wt.city_name, wt.date, wt.weather_day, wt.weather_night, wt.high_temp, wt.low_temp);
-					}
-					else
-					{
-						/* do nothing... */
-					}
-					/* 使用DMA发送至串口助手 */
-					HAL_UART_Transmit_DMA(&huart3, (uint8_t *)buffer2, strlen(buffer2));
-					break;
+					/* 实况天气写入缓冲区用于调试 */
+					sprintf(buffer2, "%s, %s, %s, %s, %s\r\n", nwt.city_name, nwt.date, nwt.temp, nwt.weather, nwt.weather_code);
 				}
+				else if(now_flag == 1)
+				{
+					/* GET请求返回来的响应包括请求头，这里是为了找到json格式的数据以便解析 */
+					ret = strchr((char *)debugBuffer, '{');
 
-				HAL_Delay(10);
+					/* 解析未来天气 */
+					wt = parse_future_weather_data(ret);
+					strcpy(mdt.high_temp, wt.high_temp);
+					strcpy(mdt.low_temp, wt.low_temp);
+
+					/* 未来天气写入缓冲区用于调试 */
+					sprintf(buffer2, "%s, %s, %s, %s, %s, %s\r\n", wt.city_name, wt.date, wt.weather_day, wt.weather_night, wt.high_temp, wt.low_temp);
+				}
+				else
+				{
+					/* do nothing... */
+				}
+				/* 使用DMA发送至串口助手 */
+				// HAL_UART_Transmit_DMA(&huart3, (uint8_t *)buffer2, strlen(buffer2));
+				// ESP8266_Clear();
+				break;
 			}
 
-			/* 等待500ms发送下一条数据 */
-			HAL_Delay(500);
+			HAL_Delay(10);
 		}
-		
-		/* 关闭透传 */
-		uart_transmit_str(huart1, (uint8_t *)exit_send_cmd);
 
-		/* 发送透传指令后需等待至少1s */
-		HAL_Delay(2000);
+		HAL_Delay(500);
+
+		ESP8266_Clear();
+
 
 		/* 关闭TCP连接 */
 		if (!ESP8266_SendCmd(close_tcp_cmd, "OK"))
@@ -279,13 +332,14 @@ unsigned short ESP8266_ReadData(unsigned char *buffer, unsigned short max_len)
 	return bytes_to_read; // 返回实际读取的字节数
 }
 
+
 /**
  * @brief 向ESP8266发送GET请求
  *
  */
 void ESP8266_GetResponse(const char **data, unsigned char data_num)
 {
-	// 开启透传模式
+	// 开启常规发送模式
 	if (!ESP8266_SendCmd(set_cipmode, "OK"))
 	{
 		uart_transmit_str(huart3, (uint8_t *)"AT CIPMODE OK\r\n");
@@ -296,29 +350,16 @@ void ESP8266_GetResponse(const char **data, unsigned char data_num)
 		return;
 	}
 
-	HAL_Delay(500);
+	// HAL_Delay(500);
 
-	unsigned char times = 5;
-
-	while(ESP8266_SendCmd(connect_server, "OK") && (times > 0))
-	{
-		times--;
-		HAL_Delay(1000);
-	}
-	if(times != 0)
-	{
-		uart_transmit_str(huart3, (uint8_t *)"Connect Server Successed!\r\n");
-	}
-	if (!ESP8266_SendCmd(connect_server, "OK"))
-	{
-		uart_transmit_str(huart3, (uint8_t *)"Connect Server Failed!\r\n");
-		return;
-	}
-
-	HAL_Delay(500);
+	
 
 	// 向服务器发送多条数据
-	ESP8266_SendData((uint8_t**)data, data_num);
+	for (uint8_t i = 0; i < data_num; i++)
+	{
+		ESP8266_SendData((uint8_t*)data[i]);
+		HAL_Delay(1000);
+	}	
 }
 
 /**
@@ -341,13 +382,15 @@ static void ESP8266_RTC_CalendarConfig(void)
 		return;
 	}
 
-	HAL_Delay(500);
+	/* 等待sntp同步完成，防止获取到错误的时间 */
+	HAL_Delay(1500);
 
-	/* 获取SNTP时间 */
-	while(ESP8266_SendCmd(get_sntp_time, "OK") && (times > 0))
+	while((sntp_ok == 0) && (times > 0))
 	{
+		/* 尝试获取sntp时间 */
+		ESP8266_SendCmd(get_sntp_time, "OK");
 		times--;
-		HAL_Delay(1000);
+		HAL_Delay(500);
 	}
 	if (times != 0)
 	{
@@ -509,15 +552,14 @@ uint8_t ESP8266_Init(void)
 	/* WIFI连接成功获取未来天气 */
 	char *data[2];
 
-	char get_future_header[512];
-	sprintf(get_future_header, "GET /v3/weather/daily.json?key=%s&location=%s&language=en&unit=c&start=0&days=%s HTTP/1.1\r\nHost: api.seniverse.com\r\n\r\n\r\n", key, location, days);
-	data[0] = get_future_header;
+	char temp[512];
+	sprintf(temp, get_daily_weather, key, location, days);
+	data[0] = temp;
 
-	// ESP8266_GetResponse(get_future_header);
 	/* WIFI连接成功获取实况天气 */
-	char get_now_header[512];
-	sprintf(get_now_header, "GET /v3/weather/now.json?key=%s&location=%s&language=en&unit=c HTTP/1.1\r\nHost: api.seniverse.com\r\n\r\n\r\n", key, location);
-	data[1] = get_now_header;
+	char temp2[512];
+	sprintf(temp2, get_now_weather, key, location);
+	data[1] = temp2;
 
 	/* 发送多条数据 */
 	ESP8266_GetResponse((const char**)data, 2);

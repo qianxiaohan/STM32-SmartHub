@@ -69,6 +69,7 @@ void load_draw_dialog(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 lv_ui guider_ui;
+char at_test[] = "AT\r\n";
 /* USER CODE END 0 */
 
 /**
@@ -107,11 +108,22 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 	delay_init();
+  
+  /* 延时等待2s，等待ESP8266稳定 */
+  HAL_Delay(2000);
+
+  // char s[] = "AT\r\n";
+  // HAL_UART_Transmit_DMA(&huart1, (uint8_t*)s, strlen(s));
+
   if(ESP8266_Init() == 1)
   {
     /* 如果WIFI连接成功，进行时间的校准 */
 
   }
+
+  // 初始化esp8266使用的串口发送的阻塞模式+DMA2接收，初始化完模块后，启用DMA2发送
+  MX_USART1_UART_Init_DMA();
+
 	lv_init();                          // lvgl初始化
   lv_port_disp_init();                // 显示设备初始化
   lv_port_indev_init();               // 输入设备初始化

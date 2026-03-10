@@ -156,15 +156,16 @@ unsigned char parse_date(const char *date_str, date_t *dt)
     }
     if (fieldCount == 7) 
     {
-        // 4. 提取星期（第0个字段："Wed"）
+        // 提取星期（第0个字段："Wed"）
         strncpy(dt->week, fields[0], 3);
         dt->week[3] = '\0';
 
-        // 5. 提取月份（第1个字段："Oct"）
+        // 提取月份（第1个字段："Oct"）
         strncpy(dt->month, fields[1], 3);
         dt->month[3] = '\0';
         
         //在-o2优化等级下使用atoi函数会出问题，疑似被优化?，重写了一个函数来实现str --> uint8_t
+        //提取日期和时间
         dt->day = strToNum(fields[2]);
         dt->hour = strToNum(fields[3]);
         dt->minute = strToNum(fields[4]);

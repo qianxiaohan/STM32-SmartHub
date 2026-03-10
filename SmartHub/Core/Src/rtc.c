@@ -34,8 +34,8 @@ void MX_RTC_Init(void)
 
   /* USER CODE END RTC_Init 0 */
 
-  // RTC_TimeTypeDef sTime = {0};
-  // RTC_DateTypeDef sDate = {0};
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
 
   /* USER CODE BEGIN RTC_Init 1 */
 
@@ -56,7 +56,7 @@ void MX_RTC_Init(void)
   }
 
   /* USER CODE BEGIN Check_RTC_BKUP */
-
+  //注意注释掉下面的代码，下面的代码会初始化RTC的值，代码是由CUBEMX生成的
   /* USER CODE END Check_RTC_BKUP */
 
   /** Initialize RTC and set the Time and Date

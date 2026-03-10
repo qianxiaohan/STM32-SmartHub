@@ -17,6 +17,9 @@
 #endif
 
 lv_timer_t * timer = NULL;
+lv_timer_t * timer2 = NULL;
+
+my_ui arg_ui;
 
 void ui_init_style(lv_style_t * style)
 {

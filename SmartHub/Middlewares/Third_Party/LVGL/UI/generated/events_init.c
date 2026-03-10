@@ -12,12 +12,11 @@
 #include "lvgl.h"
 #include "gpio.h"
 #include "rtc.h"
+#include "weather.h"
 
 #if LV_USE_GUIDER_SIMULATOR && LV_USE_FREEMASTER
 #include "freemaster_client.h"
 #endif
-
-
 
 
 uint8_t aShowDate[50] = {0};
@@ -56,38 +55,6 @@ static void main_screen_btn_home_event_handler (lv_event_t *e)
     }
 }
 
-// static void main_screen_label_time_event_handler(lv_event_t *e)
-// {
-//     lv_event_code_t code = lv_event_get_code(e);
-//     // static int count = 0;
-    
-
-//     switch (code) {
-//     case LV_EVENT_REFRESH:
-//     {
-//         // RTC_DateTypeDef sdatestructureget;
-//         RTC_TimeTypeDef stimestructureget;
-
-//         /* Get the RTC current Time */
-//         HAL_RTC_GetTime(&hrtc, &stimestructureget, RTC_FORMAT_BIN);
-//         /* Get the RTC current Date */
-//         // HAL_RTC_GetDate(&hrtc, &sdatestructureget, RTC_FORMAT_BIN);
-//         /* Display time Format : hh:mm:ss */
-//         sprintf((char *)aShowTime, "%02d:%02d", stimestructureget.Hours, stimestructureget.Minutes);
-//         lv_label_set_text(guider_ui.main_screen_label_time, (char *)aShowTime); //获取本地RTC
-//         // sprintf((char *)aShowDate, "%2d-%2d-%2d\r\n", sdatestructureget.Month, sdatestructureget.Date, 2000 + sdatestructureget.Year);
-
-//         // if(count > 60)
-//         // count = 0;
-//         // sprintf((char *)aShowTime, "16:%2d", count++);
-//         // lv_label_set_text(guider_ui.main_screen_label_time, (char *)aShowTime);
-//         break;
-//     }
-//     default:
-//         break;
-//     }
-// }
-
 static void update_time(lv_timer_t *timer){
 
     lv_obj_t* time_label = (lv_obj_t*)timer->user_data;
@@ -111,11 +78,25 @@ static void update_time(lv_timer_t *timer){
     sprintf(aShowTime, "%02d:%02d", stimestructureget.Hours, stimestructureget.Minutes);
     lv_label_set_text(time_label, aShowTime); //获取本地RTC
 
+}
 
-    // if(count > 60)
-    //     count = 0;
-    // sprintf(aShowTime, "16:%2d", count++);
-    // lv_label_set_text(time_label, aShowTime); //获取本地RTC
+static void update_weather(lv_timer_t *timer){
+
+    my_ui * uis = (my_ui*)timer->user_data;
+
+    lv_obj_t * temp_label = uis->ui1;
+    lv_obj_t * weather_label = uis->ui2;
+
+    if(temp_label == NULL || weather_label == NULL) return;
+
+    //更新温度
+    char buff[32];
+    sprintf(buff, "%s°", mdt.temp);
+    lv_label_set_text(temp_label, buff);
+
+    sprintf(buff, "%s", mdt.weather);
+    lv_label_set_text(weather_label, buff);
+
 }
 
 void events_init_main_screen (lv_ui *ui)
@@ -126,8 +107,14 @@ void events_init_main_screen (lv_ui *ui)
     // /* 为时间标签创建事件回调 */
     // lv_obj_add_event_cb(ui->main_screen_label_time, main_screen_label_time_event_handler, LV_EVENT_ALL, ui);
 
-    // /* 每秒读取RTC的值 */
+    // 创建定时器，1s刷新一次时间
     timer = lv_timer_create(update_time, 1000, ui->main_screen_label_time);
+
+    arg_ui.ui1 = ui->main_screen_label_temp;
+    arg_ui.ui2 = ui->main_screen_label_weather;
+
+    // 10s刷新一次天气和温度
+    timer2 = lv_timer_create(update_weather, 10 * 1000, &arg_ui);  
 }
 
 static void screen_home_event_handler (lv_event_t *e)

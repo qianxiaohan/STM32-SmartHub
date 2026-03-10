@@ -73,6 +73,16 @@ void init_keyboard(lv_ui *ui);
 extern lv_ui guider_ui;
 
 extern lv_timer_t *timer;
+extern lv_timer_t *timer2;
+
+//结构体，组合多个ui，当做定时器参数
+typedef struct
+{
+	lv_obj_t * ui1;
+	lv_obj_t * ui2;
+}my_ui;
+
+extern my_ui arg_ui;
 
 void setup_scr_main_screen(lv_ui *ui);
 void setup_scr_screen_home(lv_ui *ui);
