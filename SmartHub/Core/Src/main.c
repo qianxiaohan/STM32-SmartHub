@@ -32,9 +32,11 @@
 #include "delay.h"
 #include "lv_port_disp.h"
 #include "lv_port_indev.h"
+#include "lv_port_fs.h"
 #include "events_init.h"
 #include "gui_guider.h"
 #include "esp8266.h"
+#include "norflash.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -108,7 +110,7 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 	delay_init();
-  
+  norflash_init();  //初始化w25q64
   /* 延时等待2s，等待ESP8266稳定 */
   HAL_Delay(2000);
 
@@ -126,7 +128,9 @@ int main(void)
 
 	lv_init();                          // lvgl初始化
   lv_port_disp_init();                // 显示设备初始化
-  lv_port_indev_init();               // 输入设备初始化
+  // lv_port_indev_init();               // 输入设备初始化
+  /* File system support for SPI Flash */
+  // lv_port_fs_init();
    
 	/* 使用GUI GUIDIER创建的UI */
 	setup_ui(&guider_ui);

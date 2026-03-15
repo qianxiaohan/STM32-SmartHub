@@ -95,6 +95,7 @@ LV_IMG_DECLARE(_return_alpha_32x32);
 
 LV_FONT_DECLARE(lv_font_montserratMedium_12)
 LV_FONT_DECLARE(lv_font_montserratMedium_16)
+LV_FONT_DECLARE(lv_font_montserratMedium_32)
 LV_FONT_DECLARE(lv_font_montserratMedium_40)
 
 
